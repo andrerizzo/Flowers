@@ -1,0 +1,499 @@
+---
+title: "Exploratory Data Analysis for ML CLassification Problem"
+output:
+  html_document:
+    df_print: paged
+---
+<br/>
+
+Author: André Rizzo  
+January 2021  
+<br/>
+
+
+#### **Clean all stored variables**  
+```{r}
+rm(list = ls())
+```
+</br>
+
+
+#### **Set Working directory**  
+```{r , setup}
+knitr::opts_knit$set(root.dir = 'C:/temp/Iris')
+```
+</br>
+
+
+#### **Load all required libraries**  
+```{r}
+# Load libraries
+library(readr)
+library(Hmisc) #For describe()
+library(pastecs) #For stat.desc()
+library(car) #For qqPlot
+library(PerformanceAnalytics)
+library(caret) #For BoxCoxTrans and filterVarImp
+library(e1071) #For BoxCoxTrans
+library(normtest) #For ad.test and others
+library(bestNormalize) #For OrderNorm and Yeo-Johnson transformations
+library(ggplot2)
+library(CORElearn) #For Relief
+library(randomForest)
+```
+<br/>
+
+
+#### **Import dataset**
+```{r}
+df = read_csv("./data/original/iris.data")
+```
+<br/>
+
+
+#### **Show the very first 10 lines from the dataset**
+```{r}
+head(df, n = 10)
+```
+**Analysis:**  
+
+* It will be necessary to create an header for the dataset.    
+
+<br/>
+
+
+#### **Create labels**  
+```{r}
+colnames(df) = c("sepal_length", "sepal_width", "petal_length", "petal_width", "class")
+colnames(df)
+```
+<br/>
+
+
+#### **Check the first 10 lines again**  
+```{r}
+head(df, n = 10)
+```
+**Analysis**  
+
+* Now the dataframe labels are ok.  
+
+<br/>
+
+
+#### **Show the very last 10 lines from the dataset**
+```{r}
+tail(df, n = 10)
+```
+**Analysis**
+
+* The dataframe end also seems to be ok.  
+<br/>
+
+
+#### **Create auxiliary datasets before performing the data analysis**  
+```{r}
+df_num = df[,-5]
+df_cat = df[,5]
+```
+**Analysis:**  
+
+* *df_num* dataset was created to store only the numerical variables.  
+* *df_cat* dataset was created to store only the categorical variables.  
+<br/>
+
+
+
+#### **Check the dataset structure**  
+
+##### *Check variables*  
+```{r}
+str(df_num)
+str(df_cat)
+```
+**Analysis:**  
+Total varibles: 5  
+Total observations: 149  
+<br/>
+Problem type: Classification  
+
+**Prediction variables:**  
+
+* sepal_lenght: numerical / continuous  
+* sepal_width: numerical / continuous   
+* petal_length: numerical / continuous  
+* petal_width: numerical / continuous  
+
+**Response variable:**  
+
+* class: categorical with 3 classes  
+
+<br/>
+
+
+#### **Check if there are missing values**  
+```{r}
+paste("Missing values on numerical variables   -> ", sum(is.na(df_num)))
+paste("Missing values on categorical variables -> ", sum(is.na(df_cat)))
+```
+**Analysis:**  
+
+* There are no missing values  
+<br/>
+
+
+#### **Univariate Analysis**    
+
+##### *Numerical variables*    
+```{r}
+stat.desc(df_num)
+summary(df_num)
+```
+##### **Analysis**  
+
+* **sepal_length**  
+  + Asymmetry
+  + Non normal  
+<br/>
+
+
+#### **Graphical Analysis from Numerical Variables**  
+```{r}
+# Plot Histograms
+
+a = 1
+for (aux in df_num){
+  var_name = names(df_num)[a]
+  boxplot(aux, col = 'green', main =paste("Box Plot of Variable", toupper(var_name)))
+  hist(x = aux, nclass = 20, col= 'blue',main =paste("Histogram of Variable", toupper(var_name)))
+  a = a + 1
+}
+
+boxplot(df_num, col = 'green', main ="Box Plot from all Numerical Variables")
+```
+
+
+
+#### **Graphical Analysis from Categorical Variables**  
+
+##### *Create frequency table*  
+```{r}
+x = table(df[,5])
+print(x)
+```
+<br/>
+
+##### *Create Bar Plot*  
+```{r}
+
+barplot(x, main =paste("Graphical Analysis from Variable", toupper(names(df_cat))), col = 'red')
+
+```
+<br/>
+
+
+```{r}
+
+  
+```
+
+
+
+
+
+#### **Check for predictors normality**  
+
+##### *Visual normality test*  
+```{r}
+# QQ Plot
+a = 1
+for (aux in df_num){
+  var_name = names(df_num)[a]
+  qqPlot(aux, main = paste("QQ Plot of Variable", toupper(var_name)))
+  a = a + 1
+}
+
+```
+
+##### *Numerical Normality Test*  
+```{r}
+lapply(df_num, function(aux){
+  shapiro.test(aux)
+})
+
+```
+> If p-value is greater than 0.05 then we can consider that the variable has a Normal distribution**  
+
+<br/>
+
+
+#### **Perform Transformations**  
+
+##### *Create an auxiliar dataframe with only the non-normal variables*  
+```{r}
+  df_num_nonnorm = df_num[,-2]
+  head(df_num_nonnorm)
+```
+<br/>
+
+##### *Check what is the best transformation to be performed*  
+```{r}
+
+  lapply(df_num_nonnorm, function(aux){
+    bestNormalize(aux)
+  })
+  
+```
+**Analysis:**  
+
+* Variables to be transformed are *petal_length* and *petal_width*.
+  - **petal_length** variable will be transformed using *Order Norm Quantile* transformation.   
+  - **petal_width** variable will be transformed using *Order Norm Quantile* transformation.  
+* Variables *sepal_length* and *sepal_width* can be considered *normally distributed* and 
+doesn't require any transformation.  
+<br/>
+
+*For more details regarding Order Norm Quantile transformation see https://www.researchgate.net/publication/333808000_Ordered_quantile_normalization_a_semiparametric_transformation_built_for_the_cross-validation_era 
+
+<br/>
+
+
+#### **Performing Transformations**  
+
+##### *Creating a copy of the original dataframe for restore purpose.*  
+```{r}
+
+df_original = df
+```
+
+<br/>
+
+
+##### *Apply Ordered Quantile Normalizing transformation to *petal_length* variable:*    
+```{r}
+
+### INFORM THE VARIABLE TO BE TRANSFORMED HERE ### 
+var_to_be_transformed = df_num_nonnorm$petal_length
+
+
+transformed_var = orderNorm(var_to_be_transformed)
+
+transformed_var = predict(transformed_var, newdata = var_to_be_transformed)
+
+shapiro.test(transformed_var)
+
+hist(transformed_var)
+
+qqPlot(transformed_var)
+```
+**Analysis**  
+
+* After transformation *petal_length* variable is normally distributed.  
+<br/>
+
+
+##### *Adjust the dataset with the newly transformed variable:*    
+```{r}
+
+# Create a new variable called petal_length_trans on the df dataframe
+
+#### INSERT THE NEW VARIABLE NAME HERE AFTER df$ ####
+df$petal_length_trans = transformed_var
+
+
+# Erasing petal_length variable
+
+#### INSERT THE OLD VARIABLE NAME HERE AFTER df$ ####
+df$petal_length = NULL
+
+```
+
+<br/>
+
+
+##### *Apply Ordered Quantile Normalizing transformation to *petal_width* variable:*      
+```{r}
+
+### INFORM THE VARIABLE TO BE TRANSFORMED HERE ### 
+var_to_be_transformed = df_num_nonnorm$petal_width
+
+
+transformed_var = orderNorm(var_to_be_transformed)
+
+transformed_var = predict(transformed_var, newdata = var_to_be_transformed)
+
+shapiro.test(transformed_var)
+
+hist(transformed_var)
+
+qqPlot(transformed_var)
+```
+
+**Analysis**  
+
+* After transformation *petal_width* variable can be considered normally distributed. 
+
+<br/>
+
+
+##### *Adjust the dataset with the newly transformed variable:*    
+```{r}
+
+# Create a new variable called petal_length_trans on the df dataframe
+
+#### INSERT THE NEW VARIABLE NAME HERE AFTER df$ ####
+df$petal_width_trans = transformed_var
+
+
+# Erasing petal_length variable
+
+#### INSERT THE OLD VARIABLE NAME HERE AFTER df$ ####
+df$petal_width = NULL
+```
+
+<br/>
+
+##### *Clean unused variables*   
+```{r}
+rm("df_cat", "df_num", "df_num_nonnorm", "a", "x", "aux", "transformed_var", "var_to_be_transformed", 
+   "var_name")
+```
+<br/>
+
+
+##### *Create different dataframes for predictor variables and response variable:*  
+```{r}
+
+df_predictors = df[,-3]
+df_response = df[,3]
+    
+```
+<br/>
+
+
+#### **Correlation Analysis**  
+
+##### *Study the correlations between predictors*  
+```{r}
+
+chart.Correlation(R = df_predictors, histogram = TRUE, method = "pearson")
+
+```
+**Analysis**  
+
+* The main purpose here is to investigate strong correlations between predictors. When this happens, we have 
+a special situation called collinearity. Collinearity must always be avoided.    
+* p-values *greater than |0.7|* can be considered strong.  
+
+> Os métodos de Spearman e Pearson somente funcionam quando há relação linear entre as variáveis.  
+  Para relações não lineares faz-se necessário o uso de outros métodos, tal como DISTANCE CORRELATION.  
+  Pacote R: energy  
+  Pacote Python: Scipy.spatial.distance.correlation  
+  https://en.wikipedia.org/wiki/Distance_correlation  
+
+> The following points are the accepted guidelines for interpreting the correlation coefficient:  
+  1. 0  indicates no linear relationship.  
+<br/>
+  2. +1 indicates a perfect positive linear relationship – as one variable increases in its values, the other
+variable also increases in its values through an exact linear rule.  
+<br/>
+  3. −1 indicates a perfect negative linear relationship – as one variable increases in its values, the other variable decreases in its values through an exact linear rule.  
+<br/>
+  4. Values between 0 and 0.3 (0 and −0.3) indicate a weak positive (negative) linear relationship
+through a shaky linear rule.  
+<br/>
+  5. Values between 0.3 and 0.7 (0.3 and −0.7) indicate a moderate positive (negative) linear
+relationship through a fuzzy-firm linear rule.  
+<br/>
+  6. Values between 0.7 and 1.0 (−0.7 and −1.0) indicate a strong positive (negative) linear
+relationship through a firm linear rule.  
+<br/>
+  7. The value of r2, called the coefficient of determination, and denoted R2 is typically interpreted as ‘the percent of variation in one variable explained by the other variable,’ or ‘the percent of variation shared between the two variables.  
+
+<br/>
+
+
+##### *Study the correlations between predictors and response variable*  
+```{r}
+for (aux in 1:149){
+  if(df_response$class[aux] == "Iris-setosa") 
+    df_response$class[aux] = 0
+  else if(df_response$class[aux] == "Iris-versicolor") 
+    df_response$class[aux] = 1
+  else if(df_response$class[aux] == "Iris-virginica") 
+    df_response$class[aux] = 2
+}
+
+df_response$class = as.factor(df_response$class)
+df_aux = cbind(df_predictors, df_response)
+```
+
+```{r}
+# Box Plot
+a = 1
+for (aux in df_predictors){
+  var_name = names(df_predictors)[a]
+  boxplot(aux ~ df_response$class, main = paste("Box Plot of Variable", toupper(var_name)))
+  a = a + 1
+}
+```
+
+##### *Kruskal-Wallis Rank Sum Test*  
+```{r}
+
+lapply(df_predictors, function(var){
+  kruskal.test(var ~ df_response$class)
+})
+
+
+```
+
+<br/>
+
+
+
+##### *Variables importance based on ROC*  
+```{r}
+# Categorical variable must be 0, 1 and 2
+rocValues = filterVarImp(df_aux[,-5], df_aux$class)
+head(rocValues)
+```
+
+<br/>
+
+
+##### *Variables importance based on Relief algorithm*     
+```{r}
+
+relief = attrEval(formula = class ~ ., data = df_aux, estimator = 'ReliefFequalK', ReliefIterations = 50)
+head(relief)
+```
+
+<br/>
+
+##### *Variables importance based on method*    
+```{r}
+set.seed(791)
+rfImp = randomForest(class ~ ., data = df_aux, ntree = 2000, importance = TRUE)
+head(varImp(rfImp))
+```
+
+<br/>
+
+##### *Scatterplot Matrix*  
+
+```{r}
+pairs(df_aux[,1:4],col=df_aux[,5],oma=c(4,4,6,12))
+par(xpd=TRUE)
+legend(0.85,0.6, as.vector(unique(df$class)),fill=c(1,2,3))
+```
+
+
+
+
+```{r}
+write_csv(x = df_aux, file = "./data/processed/iris.csv")
+
+```
+
+
